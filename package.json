@@ -1,0 +1,72 @@
+{
+  "name": "qast",
+  "version": "1.0.0",
+  "description": "Query to AST to ORM - Parse human-readable query strings into AST and transform them into ORM-compatible filters",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "query",
+    "parser",
+    "ast",
+    "orm",
+    "prisma",
+    "typeorm",
+    "sequelize",
+    "filter",
+    "typescript",
+    "query-string",
+    "filtering",
+    "api"
+  ],
+  "author": "https://x.com/hocestnonsatis",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hocestnonsatis/qast.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hocestnonsatis/qast/issues"
+  },
+  "homepage": "https://github.com/hocestnonsatis/qast#readme",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@prisma/client": "*",
+    "typeorm": "*",
+    "sequelize": "*"
+  },
+  "peerDependenciesMeta": {
+    "@prisma/client": {
+      "optional": true
+    },
+    "typeorm": {
+      "optional": true
+    },
+    "sequelize": {
+      "optional": true
+    }
+  }
+}
+
