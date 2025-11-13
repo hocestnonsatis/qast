@@ -1,5 +1,11 @@
 # QAST — Query to AST to ORM
 
+[![npm version](https://img.shields.io/npm/v/qast.svg)](https://www.npmjs.com/package/qast)
+[![npm downloads](https://img.shields.io/npm/dm/qast.svg)](https://www.npmjs.com/package/qast)
+[![GitHub stars](https://img.shields.io/github/stars/hocestnonsatis/qast.svg)](https://github.com/hocestnonsatis/qast)
+[![TypeScript](https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg)](http://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/npm/l/qast.svg)](https://github.com/hocestnonsatis/qast/blob/main/LICENSE)
+
 **QAST** is a small, ORM-agnostic library that parses human-readable query strings (e.g. `age gt 25 and (name eq "John" or city eq "Paris")`) into an **Abstract Syntax Tree (AST)** and then transforms that AST into **ORM-compatible filter objects** such as Prisma or TypeORM filters.
 
 It aims to provide a secure, declarative, and type-safe way to support advanced filtering in REST APIs — without falling into the pitfalls of raw string-based query patterns.
@@ -412,13 +418,48 @@ function qastMiddleware(allowedFields: string[], allowedOperators: Operator[]) {
 }
 ```
 
+## Comparison with Alternatives
+
+### Why QAST?
+
+| Feature | QAST | GraphQL | OData | Custom Parsers |
+|---------|------|---------|-------|----------------|
+| **Type Safety** | ✅ Full TypeScript | ❌ Runtime only | ⚠️ Partial | ❌ Usually none |
+| **Security** | ✅ Whitelist validation | ✅ Built-in | ✅ Built-in | ⚠️ Manual |
+| **ORM Agnostic** | ✅ Yes | ❌ No | ❌ No | ⚠️ Varies |
+| **Zero Dependencies** | ✅ Yes | ❌ No | ❌ No | ⚠️ Varies |
+| **Learning Curve** | ✅ Simple | ❌ Complex | ❌ Complex | ⚠️ Varies |
+| **REST API Friendly** | ✅ Yes | ❌ Requires GraphQL endpoint | ✅ Yes | ⚠️ Varies |
+| **Bundle Size** | ✅ < 10KB | ❌ Large | ❌ Large | ⚠️ Varies |
+
+**Use QAST when:**
+- You want a simple, secure query language for REST APIs
+- You need type-safe query parsing with TypeScript
+- You're using Prisma, TypeORM, or Sequelize
+- You want zero dependencies and a small bundle size
+- You need field and operator whitelisting for security
+
+**Consider alternatives when:**
+- You need GraphQL's full query capabilities
+- You require standardized query protocols (OData)
+- You have complex nested data relationships
+
+## Examples
+
+See the [`examples`](./examples) directory for complete, working examples:
+
+- [Express.js REST API](./examples/express) - Full Express.js server with Prisma
+- [Next.js API Routes](./examples/nextjs) - Next.js API routes with QAST
+- [NestJS Integration](./examples/nestjs) - NestJS controller with query filtering
+- [Interactive Playground](./examples/playground.html) - Try QAST queries in your browser (demo)
+
 ## License
 
 MIT © 2025
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
 - GitHub Repository: https://github.com/hocestnonsatis/qast
 - Issues: https://github.com/hocestnonsatis/qast/issues

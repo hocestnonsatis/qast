@@ -1,0 +1,26 @@
+{
+  "name": "qast-express-example",
+  "version": "1.0.0",
+  "description": "Express.js REST API example using QAST",
+  "main": "server.ts",
+  "scripts": {
+    "dev": "ts-node server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.0.0",
+    "express": "^4.18.0",
+    "qast": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.0",
+    "@types/node": "^20.0.0",
+    "prisma": "^6.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
+

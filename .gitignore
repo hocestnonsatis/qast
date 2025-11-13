@@ -34,3 +34,25 @@ yarn-error.log*
 .env.local
 .env.*.local
 
+# Example projects - ignore their dependencies and build artifacts
+examples/**/node_modules/
+examples/**/dist/
+examples/**/build/
+examples/**/.next/
+examples/**/coverage/
+examples/**/*.log
+examples/**/package-lock.json
+examples/**/yarn.lock
+examples/**/pnpm-lock.yaml
+examples/**/.env
+examples/**/.env.local
+examples/**/prisma/migrations/
+examples/**/prisma/*.db
+examples/**/prisma/*.db-journal
+
+# Test database (if any)
+*.db
+*.db-journal
+prisma/test.db
+prisma/test.db-journal
+

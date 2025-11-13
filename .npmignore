@@ -4,11 +4,15 @@ tests/
 *.test.ts
 *.spec.ts
 
+# Examples directory (for documentation, not included in npm package)
+examples/
+
 # Development files
 tsconfig.json
 jest.config.js
 .gitignore
 .npmignore
+CONTRIBUTING.md
 
 # Documentation (keep README.md and LICENSE)
 QAST_Project_Specification.md
