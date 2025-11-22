@@ -1,4 +1,4 @@
-import { parseQuery } from '../src/index';
+import { parseQuery, QueryComplexityError } from '../src/index';
 import { Tokenizer } from '../src/parser/tokenizer';
 import { ParseError, TokenizationError } from '../src/errors';
 import { ComparisonNode, LogicalNode } from '../src/types/ast';
@@ -49,6 +49,21 @@ describe('Tokenizer', () => {
     expect(Array.isArray(tokens[2].value)).toBe(true);
     expect(tokens[2].value).toEqual([1, 2, 3]);
   });
+
+    test('should tokenize null values', () => {
+      const tokenizer = new Tokenizer('deletedAt eq null');
+      const tokens = tokenizer.tokenize();
+
+      expect(tokens[2].type).toBe('VALUE');
+      expect(tokens[2].value).toBeNull();
+    });
+
+    test('should tokenize nested field identifiers', () => {
+      const tokenizer = new Tokenizer('profile.address.city eq "Paris"');
+      const tokens = tokenizer.tokenize();
+
+      expect(tokens[0].value).toBe('profile.address.city');
+    });
 
   test('should tokenize string arrays', () => {
     const tokenizer = new Tokenizer('name in ["John","Jane"]');
@@ -168,22 +183,58 @@ describe('Parser', () => {
     expect(orNode.right.type).toBe('COMPARISON');
   });
 
-  test('should parse all operators', () => {
-    const operators = ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'in', 'contains'];
+    test('should parse all operators', () => {
+      const operators = ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'in', 'notIn', 'contains', 'startsWith', 'endsWith', 'between'];
     
     for (const op of operators) {
-      if (op === 'in') {
+        if (op === 'in' || op === 'notIn') {
         const ast = parseQuery(`age ${op} [1,2,3]`);
         expect((ast as ComparisonNode).op).toBe(op);
-      } else if (op === 'contains') {
-        const ast = parseQuery(`name ${op} "John"`);
-        expect((ast as ComparisonNode).op).toBe(op);
-      } else {
+        } else if (op === 'between') {
+          const ast = parseQuery(`age ${op} [18,30]`);
+          expect((ast as ComparisonNode).op).toBe(op);
+        } else if (op === 'contains' || op === 'startsWith' || op === 'endsWith') {
+          const ast = parseQuery(`name ${op} "John"`);
+          expect((ast as ComparisonNode).op).toBe(op);
+        } else {
         const ast = parseQuery(`age ${op} 25`);
         expect((ast as ComparisonNode).op).toBe(op);
       }
     }
   });
+
+    test('should parse NOT operation', () => {
+      const ast = parseQuery('not age gt 30');
+
+      expect(ast.type).toBe('NOT');
+    });
+
+    test('should parse nested NOT with parentheses', () => {
+      const ast = parseQuery('not (age gt 30 or active eq false)');
+
+      expect(ast.type).toBe('NOT');
+    });
+
+    test('should parse between operator into tuple', () => {
+      const ast = parseQuery('createdAt between ["2024-01-01","2024-02-01"]');
+      const comparison = ast as ComparisonNode;
+
+      expect(comparison.value).toEqual(['2024-01-01', '2024-02-01']);
+    });
+
+    test('should parse null literal', () => {
+      const ast = parseQuery('deletedAt eq null');
+      const comparison = ast as ComparisonNode;
+
+      expect(comparison.value).toBeNull();
+    });
+
+    test('should parse dotted identifiers', () => {
+      const ast = parseQuery('profile.address.city eq "Paris"');
+      const comparison = ast as ComparisonNode;
+
+      expect(comparison.field).toBe('profile.address.city');
+    });
 
   test('should parse array values for in operator', () => {
     const ast = parseQuery('age in [1,2,3]');
@@ -290,6 +341,26 @@ describe('Parser - Edge Cases', () => {
     const comparison = ast as ComparisonNode;
     expect(Array.isArray(comparison.value)).toBe(true);
     expect(comparison.value).toEqual([]);
+  });
+});
+
+describe('Parser - Complexity', () => {
+  test('should enforce max depth', () => {
+    expect(() =>
+      parseQuery('age gt 30 and (city eq "Paris" or city eq "London")', { maxDepth: 2 })
+    ).toThrow(QueryComplexityError);
+  });
+
+  test('should enforce max node count', () => {
+    expect(() =>
+      parseQuery('age gt 30 and city eq "Paris" and active eq true', { maxNodes: 3 })
+    ).toThrow(QueryComplexityError);
+  });
+
+  test('should enforce max clause count', () => {
+    expect(() =>
+      parseQuery('age gt 30 and city eq "Paris" and active eq true', { maxClauses: 2 })
+    ).toThrow(QueryComplexityError);
   });
 });
 

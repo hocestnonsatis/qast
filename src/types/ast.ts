@@ -1,17 +1,37 @@
 /**
  * Supported comparison operators
  */
-export type Operator = 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'in' | 'contains';
+export type Operator =
+  | 'eq'
+  | 'ne'
+  | 'gt'
+  | 'lt'
+  | 'gte'
+  | 'lte'
+  | 'in'
+  | 'notIn'
+  | 'contains'
+  | 'startsWith'
+  | 'endsWith'
+  | 'between';
 
 /**
  * Supported value types in comparisons
  */
-export type QastValue = string | number | boolean | string[] | number[];
+export type QastPrimitive = string | number | boolean | null;
+export type QastArrayValue = QastPrimitive[];
+export type QastRangeValue = [QastPrimitive, QastPrimitive];
+export type QastValue = QastPrimitive | QastArrayValue | QastRangeValue;
 
 /**
  * Logical operator type
  */
 export type LogicalOperator = 'AND' | 'OR';
+
+export interface NotNode {
+  type: 'NOT';
+  child: QastNode;
+}
 
 /**
  * Comparison node representing a field comparison operation
@@ -35,7 +55,7 @@ export interface LogicalNode {
 /**
  * Root AST node type - can be either a comparison or a logical operation
  */
-export type QastNode = LogicalNode | ComparisonNode;
+export type QastNode = LogicalNode | ComparisonNode | NotNode;
 
 /**
  * Type guard to check if a node is a ComparisonNode
@@ -50,6 +70,31 @@ export function isComparisonNode(node: QastNode): node is ComparisonNode {
 export function isLogicalNode(node: QastNode): node is LogicalNode {
   return node.type === 'AND' || node.type === 'OR';
 }
+
+export function isNotNode(node: QastNode): node is NotNode {
+  return node.type === 'NOT';
+}
+
+export type FieldPrimitiveType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'date'
+  | 'datetime'
+  | 'enum'
+  | 'uuid'
+  | 'json';
+
+export interface FieldTypeDefinition {
+  type: FieldPrimitiveType;
+  allowNull?: boolean;
+  acceptsArrays?: boolean;
+  enumValues?: Array<string | number>;
+  elementType?: FieldPrimitiveType;
+  validator?: (value: QastValue) => boolean;
+}
+
+export type FieldTypeMap = Record<string, FieldTypeDefinition>;
 
 /**
  * Options for parsing queries
@@ -69,6 +114,26 @@ export interface ParseOptions {
    * Whether to validate the query against whitelists after parsing
    */
   validate?: boolean;
+
+  /**
+   * Field type definitions (forwarded to validator when validate=true)
+   */
+  fieldTypes?: FieldTypeMap;
+
+  /**
+   * Maximum allowed AST depth (to limit nested expressions)
+   */
+  maxDepth?: number;
+
+  /**
+   * Maximum allowed number of nodes (comparisons + logical operators)
+   */
+  maxNodes?: number;
+
+  /**
+   * Maximum allowed number of comparison clauses
+   */
+  maxClauses?: number;
 }
 
 /**
@@ -84,5 +149,10 @@ export interface WhitelistOptions {
    * List of allowed operators
    */
   allowedOperators?: Operator[];
+
+  /**
+   * Field type definitions for value validation
+   */
+  fieldTypes?: FieldTypeMap;
 }
 

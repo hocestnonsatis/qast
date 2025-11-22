@@ -36,6 +36,72 @@ describe('Validation', () => {
     }).not.toThrow();
   });
 
+    test('should validate field types for strings', () => {
+      const ast = parseQuery('name contains "John"');
+      const whitelist = {
+        fieldTypes: {
+          name: { type: 'string' as const },
+        },
+      };
+
+      expect(() => validateQuery(ast, whitelist)).not.toThrow();
+    });
+
+    test('should throw error for mismatched field types', () => {
+      const ast = parseQuery('age eq "thirty"');
+      const whitelist = {
+        fieldTypes: {
+          age: { type: 'number' as const },
+        },
+      };
+
+      expect(() => validateQuery(ast, whitelist)).toThrow(ValidationError);
+    });
+
+    test('should allow null when field allows null', () => {
+      const ast = parseQuery('deletedAt eq null');
+      const whitelist = {
+        fieldTypes: {
+          deletedAt: { type: 'string' as const, allowNull: true },
+        },
+      };
+
+      expect(() => validateQuery(ast, whitelist)).not.toThrow();
+    });
+
+    test('should reject null when not allowed', () => {
+      const ast = parseQuery('deletedAt eq null');
+      const whitelist = {
+        fieldTypes: {
+          deletedAt: { type: 'string' as const, allowNull: false },
+        },
+      };
+
+      expect(() => validateQuery(ast, whitelist)).toThrow(ValidationError);
+    });
+
+    test('should validate enum values', () => {
+      const ast = parseQuery('status eq "ACTIVE"');
+      const whitelist = {
+        fieldTypes: {
+          status: { type: 'enum' as const, enumValues: ['ACTIVE', 'INACTIVE'] },
+        },
+      };
+
+      expect(() => validateQuery(ast, whitelist)).not.toThrow();
+    });
+
+    test('should reject invalid enum values', () => {
+      const ast = parseQuery('status eq "PENDING"');
+      const whitelist = {
+        fieldTypes: {
+          status: { type: 'enum' as const, enumValues: ['ACTIVE', 'INACTIVE'] },
+        },
+      };
+
+      expect(() => validateQuery(ast, whitelist)).toThrow(ValidationError);
+    });
+
   test('should throw error for disallowed operator', () => {
     const ast = parseQuery('age gt 25');
     const whitelist = {
@@ -134,6 +200,19 @@ describe('Validation', () => {
       });
     }).not.toThrow();
   });
+
+    test('should validate parseQuery with fieldTypes only', () => {
+      const query = 'age eq "thirty"';
+
+      expect(() => {
+        parseQuery(query, {
+          fieldTypes: {
+            age: { type: 'number' as const },
+          },
+          validate: true,
+        });
+      }).toThrow(ValidationError);
+    });
 
   test('should throw error in parseQuery with invalid options', () => {
     const query = 'age gt 25';

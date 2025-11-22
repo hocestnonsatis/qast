@@ -1,4 +1,12 @@
-import { QastNode, ComparisonNode, LogicalNode, isComparisonNode, isLogicalNode } from '../types/ast';
+import {
+  QastNode,
+  ComparisonNode,
+  LogicalNode,
+  isComparisonNode,
+  isLogicalNode,
+  isNotNode,
+  QastRangeValue,
+} from '../types/ast';
 
 /**
  * Sequelize filter type
@@ -47,6 +55,11 @@ function transformNode(node: QastNode): Record<string, any> {
     return transformComparisonNode(node);
   } else if (isLogicalNode(node)) {
     return transformLogicalNode(node);
+  } else if (isNotNode(node)) {
+    return {
+      __qast_logical__: 'not',
+      condition: transformNode(node.child),
+    };
   }
   throw new Error('Invalid node type');
 }
@@ -85,9 +98,17 @@ function transformComparisonNode(node: ComparisonNode): Record<string, any> {
       return { [field]: { __qast_operator__: 'lte', value } };
     case 'in':
       return { [field]: { __qast_operator__: 'in', value } };
+    case 'notIn':
+      return { [field]: { __qast_operator__: 'notIn', value } };
     case 'contains':
       // Sequelize uses Op.like for contains with wildcards
       return { [field]: { __qast_operator__: 'contains', value } };
+    case 'startsWith':
+      return { [field]: { __qast_operator__: 'startsWith', value } };
+    case 'endsWith':
+      return { [field]: { __qast_operator__: 'endsWith', value } };
+    case 'between':
+      return { [field]: { __qast_operator__: 'between', value: value as QastRangeValue } };
     default:
       throw new Error(`Unsupported operator: ${op}`);
   }
