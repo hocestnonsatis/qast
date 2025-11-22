@@ -1,5 +1,5 @@
 import { Tokenizer, Token, TokenType } from './tokenizer';
-import { QastNode, ComparisonNode, Operator } from '../types/ast';
+import { QastNode, ComparisonNode, Operator, QastRangeValue, QastValue } from '../types/ast';
 import { ParseError, TokenizationError } from '../errors';
 
 /**
@@ -54,6 +54,14 @@ export class Parser {
     return this.currentToken.type === type;
   }
 
+  private checkLogical(value: string): boolean {
+    return (
+      this.currentToken.type === TokenType.LOGICAL_OP &&
+      typeof this.currentToken.value === 'string' &&
+      (this.currentToken.value as string).toLowerCase() === value.toLowerCase()
+    );
+  }
+
   /**
    * Parse a factor: IDENTIFIER OPERATOR VALUE
    */
@@ -68,7 +76,7 @@ export class Parser {
     // Get operator
     const operatorToken = this.expect(
       TokenType.OPERATOR,
-      'Expected operator (eq, ne, gt, lt, gte, lte, in, contains)'
+        'Expected operator (eq, ne, gt, lt, gte, lte, in, notIn, contains, startsWith, endsWith, between)'
     );
     const op = operatorToken.value as Operator;
 
@@ -77,10 +85,19 @@ export class Parser {
     const value = valueToken.value;
 
     // Validate operator and value combination
-    if (op === 'in') {
+    if (op === 'in' || op === 'notIn') {
       if (!Array.isArray(value)) {
         throw new ParseError(
-          `Operator 'in' requires an array value, got ${typeof value} at position ${valueToken.position}`
+          `Operator '${op}' requires an array value, got ${typeof value} at position ${valueToken.position}`
+        );
+      }
+    }
+
+    if (op === 'between') {
+      if (!Array.isArray(value) || value.length !== 2) {
+        throw new ParseError(
+          `Operator 'between' requires an array with exactly two values`,
+          valueToken.position
         );
       }
     }
@@ -89,8 +106,15 @@ export class Parser {
       type: 'COMPARISON',
       field,
       op,
-      value: value as string | number | boolean | string[] | number[],
+      value: this.normalizeValue(op, value),
     };
+  }
+
+  private normalizeValue(op: Operator, value: any): QastValue {
+    if (op === 'between') {
+      return [value[0] ?? null, value[1] ?? null] as QastRangeValue;
+    }
+    return value as QastValue;
   }
 
   /**
@@ -98,44 +122,57 @@ export class Parser {
    */
   private parseTerm(): QastNode {
     if (this.check(TokenType.PAREN_OPEN)) {
-      // Handle parentheses: "(" expression ")"
       this.advance(); // Skip '('
       const expr = this.parseExpression();
       this.expect(TokenType.PAREN_CLOSE, 'Expected closing parenthesis )');
       return expr;
     } else {
-      // Handle factor
       return this.parseFactor();
     }
   }
 
-  /**
-   * Parse an expression: term (("and" | "or") term)*
-   * Left-associative: a and b or c is parsed as (a and b) or c
-   */
   private parseExpression(): QastNode {
-    let left = this.parseTerm();
+    return this.parseOrExpression();
+  }
 
-    // Process logical operators (left-associative)
-    while (
-      this.check(TokenType.LOGICAL_OP) &&
-      this.currentToken.type !== TokenType.EOF
-    ) {
-      const logicalOpToken = this.currentToken;
-      const logicalOp = (logicalOpToken.value as string).toUpperCase() as 'AND' | 'OR';
-      this.advance(); // Skip logical operator
-
-      const right = this.parseTerm();
-
-      // Create logical node (left-associative)
-      left = {
-        type: logicalOp,
-        left,
+  private parseOrExpression(): QastNode {
+    let node = this.parseAndExpression();
+    while (this.checkLogical('or')) {
+      this.advance();
+      const right = this.parseAndExpression();
+      node = {
+        type: 'OR',
+        left: node,
         right,
       };
     }
+    return node;
+  }
 
-    return left;
+  private parseAndExpression(): QastNode {
+    let node = this.parseNotExpression();
+    while (this.checkLogical('and')) {
+      this.advance();
+      const right = this.parseNotExpression();
+      node = {
+        type: 'AND',
+        left: node,
+        right,
+      };
+    }
+    return node;
+  }
+
+  private parseNotExpression(): QastNode {
+    if (this.checkLogical('not')) {
+      this.advance();
+      const child = this.parseNotExpression();
+      return {
+        type: 'NOT',
+        child,
+      };
+    }
+    return this.parseTerm();
   }
 
   /**

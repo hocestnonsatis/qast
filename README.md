@@ -17,6 +17,9 @@ It aims to provide a secure, declarative, and type-safe way to support advanced 
 - 🔌 **ORM-Agnostic**: Works with Prisma, TypeORM, Sequelize, and more via adapters
 - 📝 **Simple Syntax**: Natural query expressions using logical operators
 - 🚀 **Lightweight**: No dependencies, small bundle size
+- 🧠 **Schema-Aware**: Optional field type definitions prevent mismatched values or enums
+- 🚦 **Complexity Guard**: Enforce maximum depth/nodes/clauses to block expensive queries
+- 🔁 **Extra Targets**: Built-in adapters for Mongo/Mongoose and SQL/Drizzle, plus helper utilities for Sequelize/TypeORM
 
 ## Installation
 
@@ -70,19 +73,26 @@ QAST supports the following comparison operators:
 - `gte` - Greater than or equal
 - `lte` - Less than or equal
 - `in` - In array
+- `notIn` - Not in array
 - `contains` - Contains substring (string matching)
+- `startsWith` - String begins with value
+- `endsWith` - String ends with value
+- `between` - Value between two bounds (inclusive)
 
 ### Logical Operators
 
 - `and` - Logical AND
 - `or` - Logical OR
+- `not` - Unary NOT with higher precedence (`not age gt 30`)
 
 ### Values
 
 - **Strings**: Use single or double quotes: `"John"` or `'John'`
 - **Numbers**: Integers or floats: `25`, `25.99`, `-10`
 - **Booleans**: `true` or `false`
-- **Arrays**: For `in` operator: `[1,2,3]` or `["John","Jane"]`
+- **Arrays**: For `in`/`notIn` operators: `[1,2,3]` or `["John","Jane"]`
+- **Null**: `null`
+- **Nested fields**: Dot/bracket notation is allowed, e.g. `profile.address.city` or `addresses[0].city`
 
 ### Examples
 
@@ -111,6 +121,39 @@ QAST supports the following comparison operators:
 // Complex query
 'age gt 25 and (name eq "John" or city eq "Paris") and active eq true'
 ```
+
+## Field Type Validation
+
+Provide richer validation by describing each field in a schema:
+
+```typescript
+const ast = parseQuery('status eq "ACTIVE"', {
+  fieldTypes: {
+    status: { type: 'enum', enumValues: ['ACTIVE', 'INACTIVE'], allowNull: false },
+    age: { type: 'number' },
+    deletedAt: { type: 'string', allowNull: true },
+  },
+  validate: true,
+});
+```
+
+Unsupported values (e.g. `"thirty"` for a numeric field or an enum outside the allow‑list) trigger `ValidationError` before the query reaches your ORM.
+
+## Query Complexity Limits
+
+Defend against expensive filters by constraining depth, node count, or clause count directly in `parseQuery`:
+
+```typescript
+parseQuery(req.query.filter as string, {
+  maxDepth: 4,
+  maxNodes: 25,
+  maxClauses: 15,
+  validate: true,
+  allowedFields: ['age', 'city', 'status'],
+});
+```
+
+Exceeding a limit throws a `QueryComplexityError`, allowing you to return a 400 response instead of running an abusive query.
 
 ## ORM Adapters
 
@@ -162,6 +205,18 @@ await userRepository.find({ where: transformed });
 ```
 
 **Note**: TypeORM requires operator functions (`MoreThan`, `LessThan`, etc.) for non-equality comparisons. The adapter returns a structure with metadata that you can transform. For equality comparisons, TypeORM accepts plain values.
+
+If you prefer to stay close to TypeORM’s APIs, call the helper to translate metadata into actual operator calls:
+
+```typescript
+import { finalizeTypeOrmFilter } from 'qast';
+import { In, MoreThan, Not } from 'typeorm';
+
+const raw = toTypeORMFilter(ast);
+const finalized = finalizeTypeOrmFilter(raw, { In, MoreThan, Not });
+
+await userRepository.find(finalized);
+```
 
 ### Sequelize
 
@@ -220,6 +275,50 @@ await User.findAll({ where: transformed });
 
 **Note**: Sequelize uses the `Op` object from 'sequelize'. Since Sequelize is an optional peer dependency, the adapter returns a structure with metadata (`__qast_operator__` and `__qast_logical__`) that you need to transform to use `Op` operators. For simple equality (`eq`), the adapter returns plain values which Sequelize accepts directly.
 
+Prefer a turnkey conversion? Provide your `Op` object to the helper:
+
+```typescript
+import { finalizeSequelizeFilter } from 'qast';
+import { Op } from 'sequelize';
+
+const raw = toSequelizeFilter(ast);
+const finalized = finalizeSequelizeFilter(raw, Op);
+
+await User.findAll({ where: finalized });
+```
+
+### Mongo / Mongoose
+
+```typescript
+import { parseQuery, toMongoFilter } from 'qast';
+
+const ast = parseQuery('age gt 30 and not city eq "Paris"');
+const filter = toMongoFilter(ast);
+
+// filter = {
+//   $and: [
+//     { age: { $gt: 30 } },
+//     { $nor: [{ city: 'Paris' }] }
+//   ]
+// }
+
+await UserModel.find(filter);
+```
+
+### SQL & Drizzle
+
+```typescript
+import { parseQuery, toSqlFilter, toDrizzleFilter } from 'qast';
+
+const ast = parseQuery('age between [18,30] and name startsWith "Jo"');
+const { text, params } = toSqlFilter(ast);
+// text   = '("age" BETWEEN $1 AND $2 AND "name" LIKE $3)'
+// params = [18, 30, 'Jo%']
+
+// Drizzle uses the same output — toDrizzleFilter is an alias for toSqlFilter.
+await db.execute(sql.raw(text, params));
+```
+
 ## API Reference
 
 ### `parseQuery(query: string, options?: ParseOptions): QastNode`
@@ -231,7 +330,11 @@ Parse a query string into an AST.
 - `options` - Optional parsing options:
   - `allowedFields?: string[]` - Whitelist of allowed field names
   - `allowedOperators?: Operator[]` - Whitelist of allowed operators
-  - `validate?: boolean` - Whether to validate against whitelists (default: true if whitelists are provided)
+  - `fieldTypes?: FieldTypeMap` - Schema describing expected field types/enums
+  - `validate?: boolean` - Whether to validate against whitelists/schema (default: true if any validation options are provided)
+  - `maxDepth?: number` - Maximum allowed AST depth
+  - `maxNodes?: number` - Maximum number of total nodes (logical or comparison)
+  - `maxClauses?: number` - Maximum number of comparison clauses
 
 **Returns:** The parsed AST node
 
@@ -265,6 +368,26 @@ Transform an AST to a Sequelize filter.
 **Returns:** Sequelize filter object
 
 **Note:** Sequelize uses the `Op` object. You need to transform `$`-prefixed operators to use `Op` operators.
+
+### `finalizeSequelizeFilter(filter: SequelizeFilter, Op: typeof import('sequelize').Op): Record<string, any>`
+
+Translate QAST's Sequelize metadata into a structure that can be passed directly to Sequelize once you supply your `Op` map.
+
+### `toMongoFilter(ast: QastNode): MongoFilter`
+
+Transform an AST to a Mongo/Mongoose-ready filter object using `$and`, `$or`, `$nor`, and `$` comparison operators.
+
+### `toSqlFilter(ast: QastNode): SqlFilter`
+
+Transform an AST to a parameterized SQL WHERE clause with positional placeholders (`$1`, `$2`, …). Returns `{ text, params }`.
+
+### `toDrizzleFilter(ast: QastNode): DrizzleFilter`
+
+Alias of `toSqlFilter`. Use the returned `{ text, params }` with `sql.raw` in Drizzle/Kysely/Knex.
+
+### `finalizeTypeOrmFilter(filter: TypeORMFilter, operators: TypeOrmOperatorMap): TypeORMFilter`
+
+Provide the relevant TypeORM helper functions (`In`, `MoreThan`, `Not`, etc.) and receive a filter object ready for `repository.find` or `DataSource.getRepository().find`.
 
 ### `validateQuery(ast: QastNode, whitelist: WhitelistOptions): void`
 
@@ -315,6 +438,7 @@ QAST provides custom error classes:
 - `ParseError` - Syntax errors in query strings
 - `ValidationError` - Validation failures (disallowed fields/operators)
 - `TokenizationError` - Tokenization errors
+- `QueryComplexityError` - Thrown when depth/node/clause limits are exceeded
 
 ```typescript
 import { parseQuery, ParseError, ValidationError } from 'qast';

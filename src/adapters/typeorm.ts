@@ -1,4 +1,12 @@
-import { QastNode, ComparisonNode, LogicalNode, isComparisonNode, isLogicalNode } from '../types/ast';
+import {
+  QastNode,
+  ComparisonNode,
+  LogicalNode,
+  isComparisonNode,
+  isLogicalNode,
+  isNotNode,
+  QastRangeValue,
+} from '../types/ast';
 
 /**
  * TypeORM filter type
@@ -29,6 +37,10 @@ function transformNode(node: QastNode): Record<string, any> | Array<Record<strin
     return transformComparisonNode(node);
   } else if (isLogicalNode(node)) {
     return transformLogicalNode(node);
+  } else if (isNotNode(node)) {
+    return {
+      __qast_not__: transformNode(node.child),
+    };
   }
   throw new Error('Invalid node type');
 }
@@ -74,9 +86,22 @@ function transformComparisonNode(node: ComparisonNode): Record<string, any> {
     case 'in':
       // In array - requires In(value) from TypeORM
       return { [field]: { __qast_operator__: 'in', value } };
+    case 'notIn':
+      return { [field]: { __qast_operator__: 'notIn', value } };
     case 'contains':
       // Contains (like) - requires Like(`%${value}%`) from TypeORM
       return { [field]: { __qast_operator__: 'contains', value } };
+    case 'startsWith':
+      return { [field]: { __qast_operator__: 'startsWith', value } };
+    case 'endsWith':
+      return { [field]: { __qast_operator__: 'endsWith', value } };
+    case 'between':
+      return {
+        [field]: {
+          __qast_operator__: 'between',
+          value: value as QastRangeValue,
+        },
+      };
     default:
       throw new Error(`Unsupported operator: ${op}`);
   }

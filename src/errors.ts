@@ -65,3 +65,13 @@ export class ValidationError extends QastError {
   }
 }
 
+/**
+ * Error thrown when a query exceeds configured complexity limits
+ */
+export class QueryComplexityError extends QastError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'QueryComplexityError';
+  }
+}
+

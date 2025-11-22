@@ -1,4 +1,5 @@
 import { TokenizationError } from '../errors';
+import { Operator } from '../types/ast';
 
 /**
  * Token types in the query language
@@ -21,19 +22,33 @@ export enum TokenType {
  */
 export interface Token {
   type: TokenType;
-  value: string | number | boolean | string[] | number[];
+  value: string | number | boolean | null | Array<string | number | boolean | null>;
   position: number;
 }
 
 /**
  * Supported operators
  */
-const OPERATORS = ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'in', 'contains'];
+const OPERATOR_MAP: Record<string, Operator> = {
+  eq: 'eq',
+  ne: 'ne',
+  gt: 'gt',
+  lt: 'lt',
+  gte: 'gte',
+  lte: 'lte',
+  in: 'in',
+  notin: 'notIn',
+  contains: 'contains',
+  startswith: 'startsWith',
+  endswith: 'endsWith',
+  between: 'between',
+};
+const OPERATOR_KEYS = Object.keys(OPERATOR_MAP);
 
 /**
  * Logical operators
  */
-const LOGICAL_OPS = ['and', 'or'];
+const LOGICAL_OPS = ['and', 'or', 'not'];
 
 /**
  * Tokenizer for QAST query strings
@@ -69,8 +84,6 @@ export class Tokenizer {
       this.advance();
     }
   }
-
-
   /**
    * Peek at the next character without advancing
    */
@@ -88,7 +101,11 @@ export class Tokenizer {
     const start = this.position;
     while (
       this.currentChar !== null &&
-      (/\w/.test(this.currentChar) || this.currentChar === '_')
+      (/\w/.test(this.currentChar) ||
+        this.currentChar === '_' ||
+        this.currentChar === '.' ||
+        this.currentChar === '[' ||
+        this.currentChar === ']')
     ) {
       this.advance();
     }
@@ -192,6 +209,8 @@ export class Tokenizer {
     } else {
       // Not a boolean, reset position
       this.position = start;
+      this.currentChar =
+        this.position < this.input.length ? this.input[this.position] : null;
       throw new TokenizationError(
         `Expected boolean value at position ${start}`,
         start,
@@ -201,11 +220,31 @@ export class Tokenizer {
   }
 
   /**
+   * Read a null literal
+   */
+  private readNull(): null {
+    const start = this.position;
+    const literal = this.input.substring(this.position, this.position + 4).toLowerCase();
+    if (literal === 'null' && !/\w/.test(this.input[this.position + 4] ?? '')) {
+      this.position += 4;
+      this.currentChar =
+        this.position < this.input.length ? this.input[this.position] : null;
+      return null;
+    }
+
+    throw new TokenizationError(
+      `Expected null literal at position ${start}`,
+      start,
+      this.input
+    );
+    }
+
+  /**
    * Read an array (for 'in' operator)
    */
-  private readArray(): (string | number)[] {
+  private readArray(): (string | number | boolean | null)[] {
     this.advance(); // Skip opening bracket
-    const items: (string | number)[] = [];
+    const items: (string | number | boolean | null)[] = [];
     this.skipWhitespace();
 
     if (this.currentChar === ']') {
@@ -221,11 +260,29 @@ export class Tokenizer {
       }
 
       // Read value
-      let value: string | number;
+        let value: string | number | boolean | null;
       if (this.currentChar === '"' || this.currentChar === "'") {
         value = this.readString();
-      } else if (/\d/.test(this.currentChar)) {
+        } else if (
+          /\d/.test(this.currentChar) ||
+          (this.currentChar === '-' && /\d/.test(this.peek() ?? ''))
+        ) {
         value = this.readNumber();
+        } else if (
+          this.currentChar?.toLowerCase() === 't' &&
+          this.input.substring(this.position, this.position + 4).toLowerCase() === 'true'
+        ) {
+          value = this.readBoolean();
+        } else if (
+          this.currentChar?.toLowerCase() === 'f' &&
+          this.input.substring(this.position, this.position + 5).toLowerCase() === 'false'
+        ) {
+          value = this.readBoolean();
+        } else if (
+          this.currentChar?.toLowerCase() === 'n' &&
+          this.input.substring(this.position, this.position + 4).toLowerCase() === 'null'
+        ) {
+          value = this.readNull();
       } else {
         throw new TokenizationError(
           `Unexpected character in array: ${this.currentChar}`,
@@ -272,31 +329,34 @@ export class Tokenizer {
     const position = this.position;
 
     // Check for operators (must check before identifiers)
-    const peekAhead = this.input.substring(this.position);
-    for (const op of OPERATORS) {
-      if (peekAhead.startsWith(op) && !/\w/.test(peekAhead[op.length] ?? '')) {
-        this.position += op.length;
-        this.currentChar = this.position < this.input.length ? this.input[this.position] : null;
-        return {
-          type: TokenType.OPERATOR,
-          value: op,
-          position,
-        };
+      const peekAhead = this.input.substring(this.position);
+      const lowerPeek = peekAhead.toLowerCase();
+      for (const op of OPERATOR_KEYS) {
+        if (lowerPeek.startsWith(op) && !/\w/.test(lowerPeek[op.length] ?? '')) {
+          this.position += op.length;
+          this.currentChar =
+            this.position < this.input.length ? this.input[this.position] : null;
+          return {
+            type: TokenType.OPERATOR,
+            value: OPERATOR_MAP[op],
+            position,
+          };
+        }
       }
-    }
 
     // Check for logical operators
-    for (const logicalOp of LOGICAL_OPS) {
-      if (peekAhead.toLowerCase().startsWith(logicalOp) && !/\w/.test(peekAhead[logicalOp.length] ?? '')) {
-        this.position += logicalOp.length;
-        this.currentChar = this.position < this.input.length ? this.input[this.position] : null;
-        return {
-          type: TokenType.LOGICAL_OP,
-          value: logicalOp.toLowerCase(),
-          position,
-        };
+      for (const logicalOp of LOGICAL_OPS) {
+        if (lowerPeek.startsWith(logicalOp) && !/\w/.test(lowerPeek[logicalOp.length] ?? '')) {
+          this.position += logicalOp.length;
+          this.currentChar =
+            this.position < this.input.length ? this.input[this.position] : null;
+          return {
+            type: TokenType.LOGICAL_OP,
+            value: logicalOp.toLowerCase(),
+            position,
+          };
+        }
       }
-    }
 
     // Handle different token types
     if (this.currentChar === '(') {
@@ -355,29 +415,41 @@ export class Tokenizer {
     }
 
     // Check for boolean values
-    if (this.currentChar === 't' || this.currentChar === 'T') {
-      const peekAhead = this.input.substring(this.position, this.position + 4).toLowerCase();
-      if (peekAhead === 'true' && !/\w/.test(this.input[this.position + 4] ?? '')) {
-        const value = this.readBoolean();
-        return {
-          type: TokenType.VALUE,
-          value,
-          position,
-        };
+      if (this.currentChar?.toLowerCase() === 't') {
+        const literal = this.input.substring(this.position, this.position + 4).toLowerCase();
+        if (literal === 'true' && !/\w/.test(this.input[this.position + 4] ?? '')) {
+          const value = this.readBoolean();
+          return {
+            type: TokenType.VALUE,
+            value,
+            position,
+          };
+        }
       }
-    }
 
-    if (this.currentChar === 'f' || this.currentChar === 'F') {
-      const peekAhead = this.input.substring(this.position, this.position + 5).toLowerCase();
-      if (peekAhead === 'false' && !/\w/.test(this.input[this.position + 5] ?? '')) {
-        const value = this.readBoolean();
-        return {
-          type: TokenType.VALUE,
-          value,
-          position,
-        };
+      if (this.currentChar?.toLowerCase() === 'f') {
+        const literal = this.input.substring(this.position, this.position + 5).toLowerCase();
+        if (literal === 'false' && !/\w/.test(this.input[this.position + 5] ?? '')) {
+          const value = this.readBoolean();
+          return {
+            type: TokenType.VALUE,
+            value,
+            position,
+          };
+        }
       }
-    }
+
+      if (this.currentChar?.toLowerCase() === 'n') {
+        const literal = this.input.substring(this.position, this.position + 4).toLowerCase();
+        if (literal === 'null' && !/\w/.test(this.input[this.position + 4] ?? '')) {
+          const value = this.readNull();
+          return {
+            type: TokenType.VALUE,
+            value,
+            position,
+          };
+        }
+      }
 
     // Identifier (field name)
     if (/\w/.test(this.currentChar) || this.currentChar === '_') {

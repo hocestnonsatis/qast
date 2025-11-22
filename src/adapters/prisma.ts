@@ -1,4 +1,12 @@
-import { QastNode, ComparisonNode, LogicalNode, isComparisonNode, isLogicalNode } from '../types/ast';
+import {
+  QastNode,
+  ComparisonNode,
+  LogicalNode,
+  isComparisonNode,
+  isLogicalNode,
+  isNotNode,
+  QastRangeValue,
+} from '../types/ast';
 
 /**
  * Prisma filter type
@@ -24,6 +32,10 @@ function transformNode(node: QastNode): Record<string, any> {
     return transformComparisonNode(node);
   } else if (isLogicalNode(node)) {
     return transformLogicalNode(node);
+  } else if (isNotNode(node)) {
+    return {
+      NOT: transformNode(node.child),
+    };
   }
   throw new Error('Invalid node type');
 }
@@ -50,8 +62,25 @@ function transformComparisonNode(node: ComparisonNode): Record<string, any> {
       return { [field]: { lte: value } };
     case 'in':
       return { [field]: { in: value } };
+    case 'notIn':
+      return { [field]: { notIn: value } };
     case 'contains':
       return { [field]: { contains: value } };
+    case 'startsWith':
+      return { [field]: { startsWith: value } };
+    case 'endsWith':
+      return { [field]: { endsWith: value } };
+    case 'between': {
+      const [start, end] = value as QastRangeValue;
+      const betweenFilter: Record<string, any> = {};
+      if (start !== null && start !== undefined) {
+        betweenFilter.gte = start;
+      }
+      if (end !== null && end !== undefined) {
+        betweenFilter.lte = end;
+      }
+      return { [field]: betweenFilter };
+    }
     default:
       throw new Error(`Unsupported operator: ${op}`);
   }
